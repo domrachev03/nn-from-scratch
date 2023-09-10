@@ -1,0 +1,6 @@
+[submodule "lab2_nearest_neighbour/ResNetVAE"]
+	path = lab2_nearest_neighbour/ResNetVAE
+	url = https://github.com/hsinyilin19/ResNetVAE
+[submodule "lab2_nearest_neighbour/PyTorch_CIFAR10"]
+	path = lab2_nearest_neighbour/PyTorch_CIFAR10
+	url = https://github.com/huyvnphan/PyTorch_CIFAR10.git
