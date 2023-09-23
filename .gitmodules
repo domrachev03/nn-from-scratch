@@ -4,3 +4,9 @@
 [submodule "lab2_nearest_neighbour/PyTorch_CIFAR10"]
 	path = lab2_nearest_neighbour/PyTorch_CIFAR10
 	url = https://github.com/huyvnphan/PyTorch_CIFAR10.git
+[submodule "mmpretrain"]
+	path = mmpretrain
+	url = https://github.com/open-mmlab/mmpretrain/
+[submodule "lab2_nearest_neighbour/mmpretrain"]
+	path = lab2_nearest_neighbour/mmpretrain
+	url = https://github.com/open-mmlab/mmpretrain.git
