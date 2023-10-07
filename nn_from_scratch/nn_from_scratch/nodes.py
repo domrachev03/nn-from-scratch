@@ -3,10 +3,10 @@ import numpy as np
 
 
 class SoftMax(Node):
-    """ Implementation of softmax node.
+    r""" Implementation of softmax node.
 
     .. math::
-        \\hat{y}_{i} = \\frac{\\exp^{x_i}}{\\sum_{j=1}^{N} \\exp^{x_j}}
+        \hat{y}_{i} = \frac{\exp^{x_i}}{\sum_{j=1}^{N} \exp^{x_j}}
     """
 
     def __init__(self, n_input: int):
@@ -30,20 +30,20 @@ class SoftMax(Node):
         jacobian_triag = np.array([
             [
                 -exp_x[i] * exp_x[j] / exp_sum**2 if i > j else 0
-                for i in range(self._intput_dim)
-            ] for j in range(self._intput_dim)
+                for i in range(self._input_dim)
+            ] for j in range(self._input_dim)
         ])
 
         return jacobian_diag + jacobian_triag + jacobian_triag.T
 
 
 class NormalizedSoftMax(SoftMax):
-    """ Implementation of softmax node.
+    r""" Implementation of softmax node.
     It inherits the SoftMax node, since its functionality is
     heavily used
 
     .. math::
-        \\hat{y}_{i} = \\frac{\\exp^{x_i/x_{max}}}{\\sum_{j=1}^{N} \\exp^{x_j/x_{max}}}
+        \hat{y}_{i} = \frac{\exp^{x_i/x_{max}}}{\sum_{j=1}^{N} \exp^{x_j/x_{max}}}
     """
 
     def __init__(self, n_input: int):
@@ -51,7 +51,6 @@ class NormalizedSoftMax(SoftMax):
         self._max_idx = -1
 
     def reset(self) -> None:
-        super().reset()
         self._max_idx = -1
 
     def f(self, x: Node.np_floating) -> Node.np_floating:
@@ -69,11 +68,11 @@ class NormalizedSoftMax(SoftMax):
         softmax_jacobian = super().jacobian(x / x_max)
 
         # 2. d(x_norm)/dx
-        dx_norm_dx = np.diag([1/x_max for _ in range(self._intput_dim)])
+        dx_norm_dx = np.diag([1/x_max for _ in range(self._input_dim)])
         dx_norm_dx[:, self._max_idx] = np.array([
             -x_i / x_max**2 for x_i in x
         ])
-        dx_norm_dx[self._max_idx, :] = np.zeros(self._intput_dim)
+        dx_norm_dx[self._max_idx, :] = np.zeros(self._input_dim)
 
         return softmax_jacobian @ dx_norm_dx
 
@@ -92,3 +91,28 @@ class ReLU(Node):
 
     def jacobian(self, x: Node.np_floating) -> Node.np_floating:
         return np.diag([1 if x_i > 0 else 0 for x_i in x])
+
+
+class SoftMaxLoss(Node):
+    r""" Implementation of SoftMax-Loss layer.
+
+    .. math::
+        \\hat{y}_{i} =-\log \left (y\frac{\exp^{x_i/x_{max}}}{\sum_{j=1}^{N} \exp^{x_j/x_{max}}} \right)
+    """
+
+    def __init__(self, n_input: Node.DIM):
+        self._softmax: Node = SoftMax(n_input)
+        super().__init__(n_input, 1, True)
+
+    def f(self, x: Node.np_floating, y: Node.np_floating) -> Node.np_floating:
+        x_softmax: Node.np_floating = self._softmax.f(x)
+        return -np.log(np.dot(x_softmax, y))
+
+    def jacobian(self, x: Node.np_floating) -> Node.np_floating:
+        softmax_jac: Node.np_floating = self._softmax.jacobian(x)
+        denominator = np.dot(self._labels, self._softmax.f(x))
+        jac: Node.np_floating = np.zeros((1, self._input_dim))
+        for i in range(self._input_dim):
+            jac[0][i] = -self._labels[i] * softmax_jac[i, i] / denominator
+
+        return jac

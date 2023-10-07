@@ -31,11 +31,11 @@ pip install -e .
 ## Functionality
 The module currently supports:
 1. Nodes
-   1. `SoftMax`
-   2. `NormalizedSoftMax` (which is equivalient to SoftMax(x / x_max))
-   3. `ReLU` 
+   * `SoftMax`
+   * `NormalizedSoftMax` (which is equivalient to SoftMax(x / x_max))
+   * `ReLU` 
 2. Neurons
-   1. `Linear`
+   * `Linear`
 3. Optimizers
 
 ## Examples
