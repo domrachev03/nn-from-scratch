@@ -1,4 +1,5 @@
 from .interfaces import Optimizer
+from collections.abc import Iterable
 import numpy as np
 
 
@@ -20,7 +21,7 @@ class GradientDescent(Optimizer):
 
         self._lr: float = lr
         self._eps: float = eps
-        self._last_change: float = None
+        self._last_change: float = 0
 
     @property
     def lr(self) -> float:
@@ -30,19 +31,23 @@ class GradientDescent(Optimizer):
     def delta(self) -> float:
         return self._last_change
 
-    def optimize(self, optimizer_target: Optimizer.np_floating, gradients: Optimizer.np_floating) -> None:
+    def optimize(
+            self,
+            optimizer_target: Iterable[Optimizer.np_floating],
+            gradients: Iterable[Optimizer.np_floating]
+    ) -> Iterable[Optimizer.np_floating]:
         super().optimize(optimizer_target, gradients)
-        optimizer_target = optimizer_target - self._lr * gradients
+        optimized_targets = []
+        for target, grad in zip(optimizer_target, gradients):
+            optimized_targets.append(target - self._lr * grad)
+            self._last_change += self._lr * np.linalg.norm(grad)
 
-        if self._last_change is None:
-            self._last_change = self._lr * np.linalg.norm(gradients)
-        else:
-            self._last_change += self._lr * np.linalg.norm(gradients)
+        return optimized_targets
 
     def reset(self) -> None:
         self._last_change = None
 
     def limit_reached(self) -> bool:
-        if self._last_change is None or self._last_change < self._eps:
+        if self._last_change > 1e-9 or self._last_change < self._eps:
             return False
         return True

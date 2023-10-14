@@ -178,18 +178,24 @@ class Optimizer():
     np_floating = NNTypes.np_floating
 
     @abstractmethod
-    def optimize(self, optimized_target: np_floating, gradients: np_floating) -> None:
+    def optimize(
+        self, 
+        optimized_target: Iterable[np_floating], 
+        gradients: Iterable[np_floating]
+    ) -> Iterable[np_floating]:
         """
         Abstract method to apply optimization to target variable. 
         Updates optimized_target using information from gradients
 
         Parameters:
-            optimized_target (np_floating): target to optimize
-            gradients (np_floating): partial derivatives of the target. Must be of the same size
-                                     as optimized_target
+            optimized_targets (Iterable[np_floating]): iterable sequense of targets to optimize
+            gradients (Iterable[np_floating]): iterable sequense of partial derivatives of the target.
+            Must be of the same size as optimized_target
+        Returns:
+            optimized_targets (Iterable[np_floating]): sequence of optimized targets
         """
-        if optimized_target.shape != gradients.shape:
-            raise ValueError(f"Target and gradient must have the same dimension, but {optimized_target.shape} != {gradients.shape}")
+        if len(optimized_target) != len(gradients):
+            raise ValueError(f"Lists of targets and gradients are unequal: {len(optimized_target)} != {len(gradients)}")
 
     @abstractmethod 
     def reset(self) -> None:

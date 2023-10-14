@@ -141,5 +141,5 @@ class Linear(Neuron):
         return self._change_dims(backprop_pd, self._output_ndim)
 
     def optimize_weights(self, optimizer: Optimizer) -> None:
-        super().optimize_weights()
-        optimizer.optimize(self._W, self._W_pd)
+        super().optimize_weights(optimizer)
+        self._W = optimizer.optimize([self._W], [self._W_pd])[0]
