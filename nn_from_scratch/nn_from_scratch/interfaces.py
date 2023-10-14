@@ -5,8 +5,9 @@ from collections.abc import Iterable
 
 
 class NNTypes:
-    # Tensors as input are not supported
-    DIM = Iterable[int, int] | int
+    M_DIM = Iterable[int, int]
+    T_DIM = Iterable[int, int, int]
+    DIM = int | M_DIM | T_DIM
     np_floating = npt.NDArray[np.float64]
     optional_np_floating = np_floating | None
 
@@ -21,7 +22,7 @@ class Node:
     optional_np_floating = NNTypes.optional_np_floating
 
     # Custom datatype for dimension -- integer or two intergers inside iterable
-    def __init__(self, input_dim: DIM, output_dim: DIM, is_output_node: bool = False):
+    def __init__(self, input_dim: DIM, output_dim: DIM, inner_ndim: int, is_output_node: bool = False):
         """
         Object initialization.
 
@@ -30,20 +31,13 @@ class Node:
             output_dim (int, int): number of outputs
         """
 
-        self._input_dim: Node.DIM = input_dim
-        self._output_dim: Node.DIM = output_dim
-        self._is_output_node: bool = is_output_node
+        self._input_dim: Node.DIM = (input_dim, ) if isinstance(input_dim, int) else tuple(input_dim)
+        self._input_ndim: int = 1 if isinstance(input_dim, int) else len(self._input_dim)
+        self._output_dim: Node.DIM = (output_dim, ) if isinstance(output_dim, int) else tuple(output_dim)
+        self._output_ndim: int = 1 if isinstance(input_dim, int) else len(self._output_dim)
+        self._inner_ndim: int = inner_ndim
 
-        jacobian_dimension = []
-        if isinstance(self._input_dim, Iterable):
-            jacobian_dimension += self._input_dim
-        else:
-            jacobian_dimension.append(self._input_dim)
-        if isinstance(self._output_dim, Iterable):
-            jacobian_dimension += self._input_dim[::-1]
-        else:
-            jacobian_dimension.append(self._output_dim)
-        self._jac_dim: Iterable[int] = tuple(jacobian_dimension)
+        self._is_output_node: bool = is_output_node
 
         self.reset()
 
@@ -61,16 +55,15 @@ class Node:
         """
 
         self._initialized: bool = False
-        if self._is_output_node:
-            self._labels: Node.np_floating = np.zeros(self._output_dim, dtype=np.float64)
-        self._input_values: Node.np_floating = np.zeros(self._input_dim, dtype=np.float64)
-        self._output_values: Node.np_floating = np.zeros(self._output_dim, dtype=np.float64)
+        self._input_values: Node.np_floating = None
+        self._output_values: Node.np_floating = None
+        self._labels: Node.np_floating = None
 
     @abstractmethod
-    def f(self, x: np_floating, y: optional_np_floating = None) -> np_floating:
+    def __call__(self, x: np_floating, y: optional_np_floating = None) -> np_floating:
         """
-        Abstract method to calculate the node function. Does not update the inner state of the system
-
+        Abstract, to call before implementation.
+        Calculates the node function. 
         Parameters:
             x (np_floating(n_input)): function input
 
@@ -79,13 +72,14 @@ class Node:
         """
         if y is None and self._is_output_node:
             raise ValueError(
-                "Value Error: labels are not provided"
+                "labels are not provided"
             )
 
     @abstractmethod
     def jacobian(self, x: np_floating, y: optional_np_floating = None) -> np_floating:
         """
-        Abstract method for calculating partial derivatives of the function, given input.
+        Abstract, to call before implementation.
+        Calculates partial derivatives of the function, given input.
 
         Parameters:
             x (np_floating(n_input)): function input
@@ -96,13 +90,21 @@ class Node:
         """
         if y is None and self._is_output_node:
             raise ValueError(
-                "Value Error: labels are not provided"
+                "labels are not provided"
             )
-        if y is not None and x.shape != y.shape:
-            if x.ndim > 1 or x.shape != y.shape:
+
+    def _change_dims(self, x: np_floating, ndim: int) -> np_floating:
+        if x.ndim > ndim:
+            try:
+                return x.reshape(x.shape[-ndim:])
+            except Exception:
                 raise ValueError(
-                    f"Dimension Error: predictions dimension {x.shape} not equal to labels dimension {y.shape}"
+                    "downscale dimension change is available only for empty leading axes."
                 )
+        elif x.ndim == ndim:
+            return x
+        else:
+            return np.expand_dims(x, tuple(i for i in range(ndim - x.ndim)))
 
     def forward(self, input: np_floating, labels: optional_np_floating = None) -> np_floating:
         """
@@ -115,23 +117,24 @@ class Node:
 
         if labels is None and self._is_output_node:
             raise ValueError(
-                "Value Error: labels are not provided"
+                "labels are not provided"
             )
 
-        self._input_values = input
-
+        self._input_values = self._change_dims(input, self._inner_ndim)
         if self._is_output_node:
-            self._labels = labels
-            self._output_values = self.f(input, labels)
+            self._labels = self._change_dims(labels, self._inner_ndim)
+            self._output_values = self(self._input_values, self._labels)
         else:
-            self._output_values = self.f(input)
-        self._initialized = True
+            self._output_values = self(self._input_values)
 
-        return self._output_values
+        self._initialized = True
+        return self._change_dims(self._output_values, self._output_ndim)
 
     def backward(self, input_pd: optional_np_floating = None, reset_after: bool = True) -> np_floating:
         """
-        Method for backpropogation
+        Method for backpropogation.
+        Could be overriden for simplifying and/or speeding up computations.
+
         Parameters:
             input_pd (optional_np_floating(n_output)): partial derivatives of the next layer, optional.
             reset_after (bool): if True, resets inner state after backpropogation
@@ -142,28 +145,29 @@ class Node:
             raise ValueError(
                 "Value Error: partial derivatives are not provided"
             )
-
         if not self._initialized:
             raise RuntimeError("Backpropogation failed: system not initialized")
 
+        if not self._is_output_node:
+            input_pd = self._change_dims(input_pd, self._input_ndim)
+        
         jacobian: Node.np_floating = self.jacobian(self._input_values)
 
         if self._is_output_node:
             # This is assumed to be the last node, returning the value of jacobian itself
             backprop_pd = jacobian
+        elif jacobian.ndim < 2:
+            # In case of matrix jacobian, multiplication is applied
+            backprop_pd = jacobian @ input_pd
         else:
-            if jacobian.ndim == 2:
-                # In case of matrix jacobian, multiplication is applied
-                backprop_pd = jacobian @ input_pd
-            else:
-                # In case of tensor product, parial derivatives equal to elementwise product with
-                # summation over all axes except for the first two
-                backprop_pd = (jacobian * input_pd).sum(tuple(i for i in range(2, jacobian.ndim)))
+            # In case of tensor product, parial derivatives equal to elementwise product with
+            # summation over all axes except for the first two
+            backprop_pd = (jacobian * input_pd).sum(tuple(i for i in range(2, jacobian.ndim)))
 
         if reset_after:
             self.reset()
 
-        return backprop_pd
+        return self._change_dims(backprop_pd, self._input_ndim)
 
 
 class Optimizer():
@@ -184,7 +188,7 @@ class Optimizer():
             gradients (np_floating): partial derivatives of the target. Must be of the same size
                                      as optimized_target
         """
-        if optimized_target.shape == gradients.shape:
+        if optimized_target.shape != gradients.shape:
             raise ValueError(f"Target and gradient must have the same dimension, but {optimized_target.shape} != {gradients.shape}")
 
     @abstractmethod 

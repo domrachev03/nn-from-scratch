@@ -34,10 +34,21 @@ The module currently supports:
    * `SoftMax`
    * `NormalizedSoftMax` (which is equivalient to SoftMax(x / x_max))
    * `ReLU` 
+   * `SoftMaxLoss`
 2. Neurons
    * `Linear`
 3. Optimizers
+   * `GradientDescent`
 
 ## Examples
 1. `lab4_backprop` contains tests and usage examples of `SoftMax` and `NormalizedSoftMax` nodes.
 2. `lab5_gradient` contains tests and usage examples of `ReLU` and `Linear` nodes.
+3. `lab6_neural_network` contains tests and usage examples of `GradientDescent` optimizer and `SoftMaxLoss` node.
+
+## Features
+1. Interfaces, which minimize amount of code needed for new node creation
+2. All nodes support vector and matrix inputs, with behaviour defined node-wise
+
+## Future improvements ideas
+1. Reconsider `Neuron` abstract class. For now, it requires too much new code generation
+2. Make inner dimensions more transparent and convinient to use. For now, they often require explicit treatment and sometimes event walkarounds to work properly.

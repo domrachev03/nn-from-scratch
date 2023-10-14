@@ -4,8 +4,8 @@ from collections.abc import Iterable
 
 
 class Linear(Neuron):
-    """ Implements fully-connected linear layer. 
-    The input there is concatenated with column vector of ones 
+    """ Implements fully-connected linear layer.d
+    The input there is concatenated with column vector of ones
 
         .. math::
             FC(X) = WX + b
@@ -13,28 +13,28 @@ class Linear(Neuron):
 
     def __init__(
             self,
-            input_dim: Iterable[int, int],
-            output_dim: Iterable[int, int],
+            input_dim: Neuron.DIM,
+            output_dim: Neuron.DIM,
             W: Neuron.np_floating = None
     ):
-        if input_dim[1] != output_dim[1]:
+        super().__init__(input_dim, output_dim, inner_ndim=2)
+
+        if (self._input_ndim != 1) and self._input_dim[0] != self._output_dim[0]:
             raise Exception(
-                f"Dimension Error: second input dimension {input_dim[1]} not equal to second output dimension {output_dim[1]}"
+                f"Dimension Error: second input dimension {self._input_dim[0]} not equal to second output dimension {self._output_dim[0]}"
             )
 
         # All input vectors would be concatenated with row of ones,
         # to transform matrix multiplication into WX + B
-        self._W_dim: Iterable[int, int] = (output_dim[0], input_dim[0]+1)
-
-        super().__init__(input_dim, output_dim)
-
+        self._W_dim = (self._input_dim[0]+1, self._output_dim[0]) if self._input_ndim == 1 else \
+                      (self._input_dim[1]+1, self._output_dim[1])
         self.W_init(W)
 
     def _augment_input(self, X: Neuron.np_floating) -> Neuron.np_floating:
         '''
         Private method to augment the input values, by adding column vector of ones'''
-        to_augment: Neuron.np_floating = np.ones(self._input_dim[1])
-        return np.vstack([to_augment, X])
+        to_augment: Neuron.np_floating = np.ones((X.shape[0], 1))
+        return np.concatenate([to_augment, X], axis=1)
 
     def W_init(self, W: Neuron.np_floating = None):
         '''
@@ -51,20 +51,16 @@ class Linear(Neuron):
 
     def reset(self):
         super().reset()
-        self._W_pd: Neuron.np_floating = np.zeros(self._W_dim, dtype=np.float64)
+        self._W_pd: Neuron.np_floating = None
 
     @property
     def W(self) -> Neuron.np_floating:
         return self._W
 
-    def forward(self, X: Neuron.np_floating) -> Neuron.np_floating:
-        '''Overriding forward function to augment the input with ones'''
-
+    def __call__(self, X: Neuron.np_floating) -> Neuron.np_floating:
         X_augmented = self._augment_input(X)
-        return super().forward(X_augmented)
-
-    def f(self, X: Neuron.np_floating) -> Neuron.np_floating:
-        return self._W @ X
+        self._input_values = X_augmented
+        return self._change_dims(X_augmented @ self._W, self._output_ndim)
 
     def jacobian(self, X: Neuron.np_floating) -> Neuron.np_floating:
         """
@@ -77,12 +73,16 @@ class Linear(Neuron):
             d(FC)/dX (np_floating(input_dim, output_dim)): partial derivatives of function w.r.t. X
         """
 
-        X_jac_dim: Iterable[int] = (*self._input_dim, *self._output_dim)
+        if self._input_ndim == 1:
+            X_jac_dim: Iterable[int] = (1, self._input_dim[0], 1, self._output_dim[0])
+        else:
+            X_jac_dim: Iterable[int] = (*self._input_dim, *self._output_dim)
+
         X_jac: Neuron.np_floating = np.zeros(X_jac_dim, dtype=np.float64)
 
         for i in range(X_jac_dim[0]):
             for j in range(X_jac_dim[1]):
-                X_jac[i, j, :, j] = self._W[:, i+1]
+                X_jac[i, j, i] = self._W[j+1]
         return X_jac
 
     def W_jacobian(self, X: Neuron.np_floating) -> Neuron.np_floating:
@@ -94,14 +94,15 @@ class Linear(Neuron):
         Returns:
             d(FC)/dW (np_floating(W_dim, output_dim)): partial derivatives of function w.r.t. W
         """
+        if self._output_ndim == 1:
+            W_jac_dim: Iterable[int] = (*self._W_dim, 1, self._output_dim[0])
+        else:
+            W_jac_dim: Iterable[int] = (*self._W_dim, *self._output_dim)
 
-        W_jac_dim: Iterable[int] = (*self._W_dim, *self._output_dim)
         W_jac: Neuron.np_floating = np.zeros(W_jac_dim, dtype=np.float64)
-        X_augmented = self._augment_input(X)
-
         for i in range(W_jac_dim[0]):
             for j in range(W_jac_dim[1]):
-                W_jac[i, j, i] = X_augmented[j]
+                W_jac[i, j, :, i] = X[:, i]
         return W_jac
 
     def backward(
@@ -124,21 +125,20 @@ class Linear(Neuron):
         if not self._initialized:
             raise RuntimeError("Backpropogation failed: system not initialized")
 
+        input_pd = self._change_dims(input_pd, self._inner_ndim)
         # Optional calculations via jacobian
         if use_jacobian:
             self._w_pd = (self.W_jacobian(self._input_values) * input_pd).sum((2, 3))
             return super().backward(input_pd, reset_after)
-
         # Optimized calculations via dot products
         input_pd = input_pd.astype(np.float64)
-
-        self._W_pd = input_pd.dot(self._input_values.T)
-        backprop_pd = self._W[:, 1:].T.dot(input_pd)
+        self._W_pd = self._input_values.T.dot(input_pd)
+        backprop_pd = input_pd.dot(self._W[1:, :].T)
 
         if reset_after:
             self.reset()
 
-        return backprop_pd
+        return self._change_dims(backprop_pd, self._output_ndim)
 
     def optimize_weights(self, optimizer: Optimizer) -> None:
         super().optimize_weights()
