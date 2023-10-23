@@ -4,7 +4,7 @@ from collections.abc import Iterable
 
 
 class Linear(Neuron):
-    """ Implements fully-connected linear layer.d
+    """ Implements fully-connected linear layer.
     The input there is concatenated with column vector of ones
 
         .. math::
@@ -135,6 +135,116 @@ class Linear(Neuron):
         self._W_pd = self._input_values.T.dot(input_pd)
         backprop_pd = input_pd.dot(self._W[1:, :].T)
 
+        if reset_after:
+            self.reset()
+
+        return self._change_dims(backprop_pd, self._output_ndim)
+
+    def optimize_weights(self, optimizer: Optimizer) -> None:
+        super().optimize_weights(optimizer)
+        self._W = optimizer.optimize([self._W], [self._W_pd])[0]
+
+
+class Convolution(Neuron):
+    """ Implements convolution layer."""
+
+    def __init__(
+        self,
+        input_dim: Neuron.DIM,
+        conv_dim: Neuron.DIM,
+        W: Neuron.np_floating = None
+    ):
+        output_dim = (1, input_dim[1]-conv_dim[1]+1, input_dim[1]-conv_dim[1]+1)
+        super().__init__(input_dim, output_dim, inner_ndim=3)
+        self._W_dim = conv_dim
+        self.W_init(W)
+
+    def W_init(self, W: Neuron.np_floating = None):
+        '''
+        Set weights W with given value or initialize it randomly.
+        Also resets partial derivatives of W.
+        '''
+
+        self._initialized = False
+        self._W: Neuron.np_floating = np.random.uniform(
+            0.4, 0.6,
+            self._W_dim
+        ) if W is None else W
+        self.reset()
+
+    def reset(self):
+        super().reset()
+        self._W_pd: Neuron.np_floating = None
+
+    @property
+    def W(self) -> Neuron.np_floating:
+        return self._W
+
+    def _convolve(self, T: Neuron.np_floating, W: Neuron.np_floating, add_padding: bool = False) -> Neuron.np_floating:
+        if T.ndim == 2:
+            T = np.expand_dims(T, axis=0)
+        if W.ndim == 2:
+            W = np.expand_dims(W, axis=0)
+        assert T.shape[0] == W.shape[0]
+
+        if not add_padding:
+            output_shape = (1, (T.shape[1] - W.shape[1] + 1), (T.shape[2] - W.shape[2] + 1))    
+        else:
+            output_shape = (1, (T.shape[1] + W.shape[1] - 1), (T.shape[2] + W.shape[2] - 1))
+            pad_values = [
+                (0, 0),
+                (W.shape[1]-1, W.shape[1]-1),
+                (W.shape[2]-1, W.shape[2]-1)
+            ]
+            T = np.pad(T, pad_width=pad_values)
+
+        convolution = np.zeros(output_shape)
+        for row in range(output_shape[1]):
+            for col in range(output_shape[2]):
+                convolution[0, row, col] = np.sum(
+                    T[:, row: row+W.shape[1], col: col+W.shape[2]] * W
+                )
+        return convolution
+
+    def __call__(self, X: Neuron.np_floating) -> Neuron.np_floating:
+        self._input_values = X
+        return self._convolve(X, self._W)
+
+    def jacobian(self, X: Neuron.np_floating) -> Neuron.np_floating:
+        raise NotImplementedError("Jacobians of the convolution is to be estimated")
+
+    def W_jacobian(self, X: Neuron.np_floating) -> Neuron.np_floating:
+        raise NotImplementedError("Jacobians of the convolution is to be estimated")
+
+    def backward(
+            self,
+            input_pd: Neuron.np_floating,
+            reset_after: bool = False,
+            use_jacobian: bool = False
+    ) -> Neuron.np_floating:
+        """
+        Overriden method for backpropogation. It does not use jacobians, but computes
+        partial derivatives via dot products. Works faster than general approach.
+        Parameters:
+            input_pd (np_floating(n_output)): partial derivatives of the next layer
+            reset_after (bool): if True, resets inner state after backpropogation
+            use_jacobian (bool): if True, uses the superclass implemented backward function, and
+                                 updates the state of W in similar way
+        Returns:
+            output_pd (np_floating(n_input)): partial derivatives to propogate back"""
+
+        if not self._initialized:
+            raise RuntimeError("Backpropogation failed: system not initialized")
+
+        input_pd = self._change_dims(input_pd, self._inner_ndim)
+
+        # TODO: backpropogation
+        self._W_pd = np.concatenate([
+            self._convolve(self._input_values[i], input_pd) for i in range(self._input_dim[0])
+        ], axis=0)
+        backprop_pd = np.concatenate([
+            self._convolve(input_pd, self._W[i, ::-1, ::-1], add_padding=True) for i in range(self._input_dim[0])
+        ], axis=0)
         if reset_after:
             self.reset()
 
