@@ -2,9 +2,11 @@ from nn_from_scratch.interfaces import Node, Optimizer, NNTypes, Neuron
 from collections.abc import Iterable
 
 
-class NeuralNetwork:
-    """Fully-Connected classifier NN."""
+class ConvolutionalNN:
+    """Image classifier convolutinoal NN.
 
+    Layers: Linear -> SoftMax -> SoftMaxLoss
+    """
     np_floating = NNTypes.np_floating
 
     def __init__(
