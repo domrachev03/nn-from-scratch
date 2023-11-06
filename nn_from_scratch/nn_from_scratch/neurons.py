@@ -151,13 +151,41 @@ class Convolution(Neuron):
     def __init__(
         self,
         input_dim: Neuron.DIM,
-        conv_dim: Neuron.DIM,
-        W: Neuron.np_floating = None
+        kernel_size: int,
+        output_layers: int = 1,
+        W: Neuron.np_floating = None,
+        B: Neuron.np_floating = None,
+        use_bias: bool = True
     ):
-        output_dim = (1, input_dim[1]-conv_dim[1]+1, input_dim[1]-conv_dim[1]+1)
-        super().__init__(input_dim, output_dim, inner_ndim=3)
-        self._W_dim = conv_dim
+        self._use_bias = use_bias
+        self._kernel_size = kernel_size
+        self._batch_size = input_dim[0]
+        self._output_layers = output_layers
+        output_dim = (
+            self._batch_size, output_layers, input_dim[2]-kernel_size+1, input_dim[3]-kernel_size+1
+        )
+        super().__init__(input_dim, output_dim, inner_ndim=4)
+        self._W_dim = (
+            output_layers, input_dim[1], kernel_size, kernel_size
+        )
+        if use_bias:
+            self._B_dim = output_dim[1:]
+            self.B_init(B)
+
         self.W_init(W)
+
+    def B_init(self, B: Neuron.np_floating = None):
+        '''
+        Set weights B with given value or initialize it randomly.
+        Also resets partial derivatives of B.
+        '''
+
+        self._initialized = False
+        self._B: Neuron.np_floating = np.random.uniform(
+            0.4, 0.6,
+            self._B_dim
+        ) if B is None else B
+        self.reset()
 
     def W_init(self, W: Neuron.np_floating = None):
         '''
@@ -175,52 +203,63 @@ class Convolution(Neuron):
     def reset(self):
         super().reset()
         self._W_pd: Neuron.np_floating = None
+        if self._use_bias:
+            self._B_pd: Neuron.np_floating = None
 
     @property
     def W(self) -> Neuron.np_floating:
         return self._W
 
-    def _convolve(self, T: Neuron.np_floating, W: Neuron.np_floating, add_padding: bool = False) -> Neuron.np_floating:
-        if T.ndim == 2:
-            T = np.expand_dims(T, axis=0)
-        if W.ndim == 2:
-            W = np.expand_dims(W, axis=0)
-        assert T.shape[0] == W.shape[0]
+    @property
+    def B(self) -> Neuron.np_floating:
+        if not self._use_bias:
+            raise ValueError("Bias is not initialized")
+        return self._B
 
-        if not add_padding:
-            output_shape = (1, (T.shape[1] - W.shape[1] + 1), (T.shape[2] - W.shape[2] + 1))    
-        else:
-            output_shape = (1, (T.shape[1] + W.shape[1] - 1), (T.shape[2] + W.shape[2] - 1))
+    def _convolve(self, T: Neuron.np_floating, W: Neuron.np_floating, add_padding: bool = False) -> Neuron.np_floating:
+        T = self._change_dims(T, 4)
+        W = self._change_dims(W, 4)
+        if add_padding:
             pad_values = [
                 (0, 0),
-                (W.shape[1]-1, W.shape[1]-1),
-                (W.shape[2]-1, W.shape[2]-1)
+                (0, 0),
+                (W.shape[2]-1, W.shape[2]-1),
+                (W.shape[3]-1, W.shape[3]-1)
             ]
             T = np.pad(T, pad_width=pad_values)
 
+        output_shape = (
+            T.shape[0],
+            W.shape[0],
+            (T.shape[2] - W.shape[2] + 1),
+            (T.shape[3] - W.shape[3] + 1)
+        )
+
         convolution = np.zeros(output_shape)
-        for row in range(output_shape[1]):
-            for col in range(output_shape[2]):
-                convolution[0, row, col] = np.sum(
-                    T[:, row: row+W.shape[1], col: col+W.shape[2]] * W
-                )
+        for batch_idx in range(output_shape[0]):
+            for conv in range(output_shape[1]):
+                for row in range(output_shape[2]):
+                    for col in range(output_shape[3]):
+                        convolution[batch_idx, conv, row, col] = np.sum(
+                            T[batch_idx, :, row: row+W.shape[2], col: col+W.shape[3]] * W[conv]
+                        )
         return convolution
 
     def __call__(self, X: Neuron.np_floating) -> Neuron.np_floating:
-        self._input_values = X
-        return self._convolve(X, self._W)
+        self._input_values = self._change_dims(X, 4)
+
+        return self._convolve(X, self._W) + self._B if self._use_bias else self._convolve(X, self._W)
 
     def jacobian(self, X: Neuron.np_floating) -> Neuron.np_floating:
-        raise NotImplementedError("Jacobians of the convolution is to be estimated")
+        raise NotImplementedError("Jacobians is not implemented for the convolution layer")
 
     def W_jacobian(self, X: Neuron.np_floating) -> Neuron.np_floating:
-        raise NotImplementedError("Jacobians of the convolution is to be estimated")
+        raise NotImplementedError("Jacobians is not implemented for the convolution layer")
 
     def backward(
             self,
             input_pd: Neuron.np_floating,
-            reset_after: bool = False,
-            use_jacobian: bool = False
+            reset_after: bool = False
     ) -> Neuron.np_floating:
         """
         Overriden method for backpropogation. It does not use jacobians, but computes
@@ -228,8 +267,6 @@ class Convolution(Neuron):
         Parameters:
             input_pd (np_floating(n_output)): partial derivatives of the next layer
             reset_after (bool): if True, resets inner state after backpropogation
-            use_jacobian (bool): if True, uses the superclass implemented backward function, and
-                                 updates the state of W in similar way
         Returns:
             output_pd (np_floating(n_input)): partial derivatives to propogate back"""
 
@@ -238,13 +275,42 @@ class Convolution(Neuron):
 
         input_pd = self._change_dims(input_pd, self._inner_ndim)
 
-        # TODO: backpropogation
-        self._W_pd = np.concatenate([
-            self._convolve(self._input_values[i], input_pd) for i in range(self._input_dim[0])
-        ], axis=0)
-        backprop_pd = np.concatenate([
-            self._convolve(input_pd, self._W[i, ::-1, ::-1], add_padding=True) for i in range(self._input_dim[0])
-        ], axis=0)
+        self._W_pd = np.zeros(self._W_dim)
+        backprop_pd = np.zeros(self._input_dim)
+
+        if self._use_bias:
+            self._B_pd = np.sum(input_pd, axis=0)
+        
+        for batch_idx in range(self._batch_size):
+            self._W_pd += np.concatenate(
+                [
+                    np.concatenate(
+                        [
+                            self._convolve(self._input_values[batch_idx, depth], input_pd[batch_idx, conv_layer])
+                            for depth in range(self._input_dim[1])
+                        ], axis=1
+                    )
+                    for conv_layer in range(self._output_layers)
+                ], axis=0
+            )
+
+        for batch_idx in range(self._batch_size):
+            backprop_pd[batch_idx] = np.sum(
+                [
+                    np.concatenate(
+                        [
+                            self._convolve(
+                                input_pd[batch_idx, conv_layer],
+                                self._W[conv_layer, depth, ::-1, ::-1],
+                                add_padding=True
+                            )
+                            for depth in range(self._input_dim[1])
+                        ], axis=1
+                    )
+                    for conv_layer in range(self._output_layers)
+                ], axis=0
+            )
+
         if reset_after:
             self.reset()
 
@@ -252,4 +318,7 @@ class Convolution(Neuron):
 
     def optimize_weights(self, optimizer: Optimizer) -> None:
         super().optimize_weights(optimizer)
-        self._W = optimizer.optimize([self._W], [self._W_pd])[0]
+        if self._use_bias:
+            self._W, self._B = optimizer.optimize([self._W, self._B], [self._W_pd, self._B_pd])
+        else:
+            self._W = optimizer.optimize([self._B], [self._B_pd])[0]
