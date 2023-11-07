@@ -196,9 +196,9 @@ class Vectorization(Node):
         self._vector_length = 1
         for dim_i in input_dim[1:]:
             self._vector_length *= dim_i
-            
+
         output_dim = (input_dim[0], self._vector_length)
-        super().__init__(input_dim, output_dim, 2)
+        super().__init__(input_dim, output_dim, 4)
 
     def __call__(self, x: Node.np_floating) -> Node.np_floating:
         return x.reshape(x.shape[0], -1)

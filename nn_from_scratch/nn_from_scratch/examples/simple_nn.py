@@ -1,5 +1,7 @@
 from nn_from_scratch.interfaces import Node, Optimizer, NNTypes, Neuron
+import numpy as np
 from collections.abc import Iterable
+from tqdm import tqdm
 
 
 class NeuralNetwork:
@@ -27,8 +29,6 @@ class NeuralNetwork:
             y: np_floating,
             n_epochs: int | None = None
     ) -> float:
-        assert X.shape[1:] == (self._batch_size, self._n_input)
-        assert y.shape[1:] == (self._batch_size, self._n_output)
         self._epoch_no: int = 0
         self._epoch_loss: float = 0
 
@@ -36,35 +36,43 @@ class NeuralNetwork:
             # Resetting loss
             self._epoch_loss = 0
             # Train iteration
-            for batch_idx in range(X.shape[0]):
-                # Input iteration
-                state: NeuralNetwork.np_floating = X[batch_idx]
-                label: NeuralNetwork.np_floating = y[batch_idx]
+            with tqdm(range(X.shape[0]), total=X.shape[0]) as tq:
+                for batch_idx in tq:
+                    # Input iteration
+                    state: NeuralNetwork.np_floating = X[batch_idx]
+                    label: NeuralNetwork.np_floating = y[batch_idx]
 
-                # Forward pass
-                for layer in self._layers:
-                    state = layer.forward(state)
-                self._epoch_loss += self._loss.forward(state, label)
+                    # Forward pass
+                    for layer in self._layers:
+                        state = layer.forward(state)    
+                    self._epoch_loss += self._loss.forward(state, label)
 
-                # Backpropogation
-                partial_derivative = self._loss.backward()
-                for layer in self._layers[::-1]:
-                    partial_derivative = layer.backward(partial_derivative)
-                    if isinstance(layer, Neuron):
-                        layer.optimize_weights(self._opt)
-            self._epoch_no += 1
-            self._visualize()
-            # Termination check
-            if n_epochs is None and self._opt.limit_reached():
-                break
-            elif n_epochs <= self._epoch_no:
-                break
+                    # Backpropogation
+                    partial_derivative = self._loss.backward()
+                    for layer in self._layers[::-1]:
+                        # print(partial_derivative.shape)
+                        partial_derivative = layer.backward(partial_derivative)
+                        if isinstance(layer, Neuron):
+                            layer.optimize_weights(self._opt)
+                    tq.set_postfix({"loss": self._epoch_loss[0] / (batch_idx+1)})
+                self._epoch_no += 1
+                self._epoch_loss /= X.shape[0]
+                self._visualize()
+                # Termination check
+                if n_epochs is None and self._opt.limit_reached():
+                    break
+                elif n_epochs <= self._epoch_no:
+                    break
 
         return self._epoch_loss
 
     def _visualize(self) -> None:
-        print(f"Epoch {self._epoch_no}, Loss: {self._epoch_loss}")
+        print(f"Epoch {self._epoch_no}, Loss: {self._epoch_loss[0]}")
 
+    @property
+    def loss(self) -> float:
+        return self._epoch_loss[0]
+    
     def predict(self, x: np_floating) -> np_floating:
         # Forward pass
         state = x.copy()

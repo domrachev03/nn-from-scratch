@@ -48,6 +48,6 @@ class GradientDescent(Optimizer):
         self._last_change = None
 
     def limit_reached(self) -> bool:
-        if self._last_change > 1e-9 or self._last_change < self._eps:
+        if self._last_change < self._eps:
             return False
         return True

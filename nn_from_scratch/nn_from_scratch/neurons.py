@@ -44,7 +44,7 @@ class Linear(Neuron):
 
         self._initialized = False
         self._W: Neuron.np_floating = np.random.uniform(
-            0.4, 0.6,
+            -.1, .1,
             self._W_dim
         ) if W is None else W
         self.reset()
@@ -182,7 +182,7 @@ class Convolution(Neuron):
 
         self._initialized = False
         self._B: Neuron.np_floating = np.random.uniform(
-            0.4, 0.6,
+            -.1, .1,
             self._B_dim
         ) if B is None else B
         self.reset()
@@ -195,7 +195,7 @@ class Convolution(Neuron):
 
         self._initialized = False
         self._W: Neuron.np_floating = np.random.uniform(
-            0.4, 0.6,
+            -.1, .1,
             self._W_dim
         ) if W is None else W
         self.reset()
@@ -226,7 +226,7 @@ class Convolution(Neuron):
                 (W.shape[2]-1, W.shape[2]-1),
                 (W.shape[3]-1, W.shape[3]-1)
             ]
-            T = np.pad(T, pad_width=pad_values)
+            T = np.pad(T, pad_width=pad_values).astype(np.float64)
 
         output_shape = (
             T.shape[0],
@@ -247,8 +247,10 @@ class Convolution(Neuron):
 
     def __call__(self, X: Neuron.np_floating) -> Neuron.np_floating:
         self._input_values = self._change_dims(X, 4)
-
-        return self._convolve(X, self._W) + self._B if self._use_bias else self._convolve(X, self._W)
+        if self._use_bias:
+            return self._convolve(X, self._W) + self._B
+        else:
+            return self._convolve(X, self._W)
 
     def jacobian(self, X: Neuron.np_floating) -> Neuron.np_floating:
         raise NotImplementedError("Jacobians is not implemented for the convolution layer")
@@ -309,8 +311,8 @@ class Convolution(Neuron):
                     )
                     for conv_layer in range(self._output_layers)
                 ], axis=0
-            )
-
+            )[:, 0, :, :]
+        
         if reset_after:
             self.reset()
 
@@ -321,4 +323,4 @@ class Convolution(Neuron):
         if self._use_bias:
             self._W, self._B = optimizer.optimize([self._W, self._B], [self._W_pd, self._B_pd])
         else:
-            self._W = optimizer.optimize([self._B], [self._B_pd])[0]
+            self._W = optimizer.optimize([self._W], [self._W_pd])[0]
