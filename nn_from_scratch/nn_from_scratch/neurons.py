@@ -153,6 +153,7 @@ class Convolution(Neuron):
         input_dim: Neuron.DIM,
         kernel_size: int,
         output_layers: int = 1,
+        padding: int = 0,
         W: Neuron.np_floating = None,
         B: Neuron.np_floating = None,
         use_bias: bool = True
@@ -160,9 +161,10 @@ class Convolution(Neuron):
         self._use_bias = use_bias
         self._kernel_size = kernel_size
         self._batch_size = input_dim[0]
+        self._padding = padding
         self._output_layers = output_layers
         output_dim = (
-            self._batch_size, output_layers, input_dim[2]-kernel_size+1, input_dim[3]-kernel_size+1
+            self._batch_size, output_layers, input_dim[2]-kernel_size+1 + 2*padding, input_dim[3]-kernel_size+1 + 2*padding
         )
         super().__init__(input_dim, output_dim, inner_ndim=4)
         self._W_dim = (
@@ -247,10 +249,20 @@ class Convolution(Neuron):
 
     def __call__(self, X: Neuron.np_floating) -> Neuron.np_floating:
         self._input_values = self._change_dims(X, 4)
+        self._input_values = np.pad(
+            self._input_values,
+            [
+                (0, 0),
+                (0, 0),
+                (self._padding, self._padding),
+                (self._padding, self._padding)
+            ]
+        )
+        res = self._convolve(self._input_values, self._W)
         if self._use_bias:
-            return self._convolve(X, self._W) + self._B
-        else:
-            return self._convolve(X, self._W)
+            res += self._B
+
+        return res
 
     def jacobian(self, X: Neuron.np_floating) -> Neuron.np_floating:
         raise NotImplementedError("Jacobians is not implemented for the convolution layer")
@@ -288,31 +300,58 @@ class Convolution(Neuron):
                 [
                     np.concatenate(
                         [
-                            self._convolve(self._input_values[batch_idx, depth], input_pd[batch_idx, conv_layer])
-                            for depth in range(self._input_dim[1])
-                        ], axis=1
-                    )
-                    for conv_layer in range(self._output_layers)
-                ], axis=0
-            )
-
-        for batch_idx in range(self._batch_size):
-            backprop_pd[batch_idx] = np.sum(
-                [
-                    np.concatenate(
-                        [
                             self._convolve(
-                                input_pd[batch_idx, conv_layer],
-                                self._W[conv_layer, depth, ::-1, ::-1],
-                                add_padding=True
+                                self._input_values[
+                                    batch_idx,
+                                    depth,
+                                ],
+                                input_pd[batch_idx, conv_layer]
                             )
                             for depth in range(self._input_dim[1])
                         ], axis=1
                     )
                     for conv_layer in range(self._output_layers)
                 ], axis=0
-            )[:, 0, :, :]
-        
+            )
+        if self._padding != 0:
+            for batch_idx in range(self._batch_size):
+                backprop_pd[batch_idx] = np.sum(
+                    [
+                        np.concatenate(
+                            [
+                                self._convolve(
+                                    input_pd[
+                                        batch_idx,
+                                        conv_layer,
+                                        self._padding:-self._padding,
+                                        self._padding:-self._padding
+                                    ],
+                                    self._W[conv_layer, depth, ::-1, ::-1],
+                                    add_padding=True
+                                )
+                                for depth in range(self._input_dim[1])
+                            ], axis=1
+                        )
+                        for conv_layer in range(self._output_layers)
+                    ], axis=0
+                )[:, 0, :, :]
+        else:
+            for batch_idx in range(self._batch_size):
+                backprop_pd[batch_idx] = np.sum(
+                    [
+                        np.concatenate(
+                            [
+                                self._convolve(
+                                    input_pd[batch_idx, conv_layer],
+                                    self._W[conv_layer, depth, ::-1, ::-1],
+                                    add_padding=True
+                                )
+                                for depth in range(self._input_dim[1])
+                            ], axis=1
+                        )
+                        for conv_layer in range(self._output_layers)
+                    ], axis=0
+                )[:, 0, :, :]
         if reset_after:
             self.reset()
 
