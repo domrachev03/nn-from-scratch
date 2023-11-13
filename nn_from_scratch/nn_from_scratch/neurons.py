@@ -23,17 +23,16 @@ class Linear(Neuron):
             raise Exception(
                 f"Dimension Error: second input dimension {self._input_dim[0]} not equal to second output dimension {self._output_dim[0]}"
             )
-
+        self._dtype = np.float32
         # All input vectors would be concatenated with row of ones,
         # to transform matrix multiplication into WX + B
-        self._W_dim = (self._input_dim[0]+1, self._output_dim[0]) if self._input_ndim == 1 else \
-                      (self._input_dim[1]+1, self._output_dim[1])
+        self._W_dim = (self._input_dim[-1]+1, self._output_dim[-1])
         self.W_init(W)
 
     def _augment_input(self, X: Neuron.np_floating) -> Neuron.np_floating:
         '''
         Private method to augment the input values, by adding column vector of ones'''
-        to_augment: Neuron.np_floating = np.ones((X.shape[0], 1))
+        to_augment: Neuron.np_floating = np.ones((X.shape[0], 1), dtype=self._dtype)
         return np.concatenate([to_augment, X], axis=1)
 
     def W_init(self, W: Neuron.np_floating = None):
@@ -46,7 +45,7 @@ class Linear(Neuron):
         self._W: Neuron.np_floating = np.random.uniform(
             -.1, .1,
             self._W_dim
-        ) if W is None else W
+        ).astype(self._dtype) if W is None else W
         self.reset()
 
     def reset(self):
@@ -62,7 +61,7 @@ class Linear(Neuron):
         self._input_values = X_augmented
         return self._change_dims(X_augmented @ self._W, self._output_ndim)
 
-    def jacobian(self, X: Neuron.np_floating) -> Neuron.np_floating:
+    def jacobian(self, X: Neuron.np_floating = None ) -> Neuron.np_floating:
         """
         The jacobian w.r.t. X.
         Note that backward function is overriden in this class, and by default
@@ -78,7 +77,7 @@ class Linear(Neuron):
         else:
             X_jac_dim: Iterable[int] = (*self._input_dim, *self._output_dim)
 
-        X_jac: Neuron.np_floating = np.zeros(X_jac_dim, dtype=np.float64)
+        X_jac: Neuron.np_floating = np.zeros(X_jac_dim, dtype=self._dtype)
 
         for i in range(X_jac_dim[0]):
             for j in range(X_jac_dim[1]):
@@ -99,7 +98,7 @@ class Linear(Neuron):
         else:
             W_jac_dim: Iterable[int] = (*self._W_dim, *self._output_dim)
 
-        W_jac: Neuron.np_floating = np.zeros(W_jac_dim, dtype=np.float64)
+        W_jac: Neuron.np_floating = np.zeros(W_jac_dim, dtype=self._dtype)
         for i in range(W_jac_dim[0]):
             for j in range(W_jac_dim[1]):
                 W_jac[i, j, :, i] = X[:, i]
@@ -131,7 +130,7 @@ class Linear(Neuron):
             self._w_pd = (self.W_jacobian(self._input_values) * input_pd).sum((2, 3))
             return super().backward(input_pd, reset_after)
         # Optimized calculations via dot products
-        input_pd = input_pd.astype(np.float64)
+        input_pd = input_pd.astype(self._dtype)
         self._W_pd = self._input_values.T.dot(input_pd)
         backprop_pd = input_pd.dot(self._W[1:, :].T)
 
@@ -163,6 +162,7 @@ class Convolution(Neuron):
         self._batch_size = input_dim[0]
         self._padding = padding
         self._output_layers = output_layers
+        self._dtype = np.float32
         output_dim = (
             self._batch_size, output_layers, input_dim[2]-kernel_size+1 + 2*padding, input_dim[3]-kernel_size+1 + 2*padding
         )
@@ -186,7 +186,7 @@ class Convolution(Neuron):
         self._B: Neuron.np_floating = np.random.uniform(
             -.1, .1,
             self._B_dim
-        ) if B is None else B
+        ).astype(self._dtype) if B is None else B
         self.reset()
 
     def W_init(self, W: Neuron.np_floating = None):
@@ -199,7 +199,7 @@ class Convolution(Neuron):
         self._W: Neuron.np_floating = np.random.uniform(
             -.1, .1,
             self._W_dim
-        ) if W is None else W
+        ).astype(self._dtype) if W is None else W
         self.reset()
 
     def reset(self):
@@ -230,25 +230,25 @@ class Convolution(Neuron):
             ]
             T = np.pad(T, pad_width=pad_values).astype(np.float64)
 
-        output_shape = (
-            T.shape[0],
-            W.shape[0],
-            (T.shape[2] - W.shape[2] + 1),
-            (T.shape[3] - W.shape[3] + 1)
+        shape = (
+            T.shape[0], T.shape[1],
+            T.shape[2] - W.shape[2] + 1, T.shape[3] - W.shape[3] + 1,
+            W.shape[2], W.shape[3]
         )
-
-        convolution = np.zeros(output_shape)
-        for batch_idx in range(output_shape[0]):
-            for conv in range(output_shape[1]):
-                for row in range(output_shape[2]):
-                    for col in range(output_shape[3]):
-                        convolution[batch_idx, conv, row, col] = np.sum(
-                            T[batch_idx, :, row: row+W.shape[2], col: col+W.shape[3]] * W[conv]
-                        )
-        return convolution
+        batch_str, channel_str, kern_h_str, kern_w_str = T.strides
+        strides = (
+            batch_str,
+            channel_str,
+            kern_h_str, kern_w_str,
+            kern_h_str, kern_w_str,
+        )
+        M = np.lib.stride_tricks.as_strided(T, shape=shape, strides=strides)
+        y = np.einsum('bihwkl,oikl->bohw', M, W)
+        return y
 
     def __call__(self, X: Neuron.np_floating) -> Neuron.np_floating:
-        self._input_values = self._change_dims(X, 4)
+        self._input_values = self._change_dims(X, 4).astype(self._dtype)
+
         self._input_values = np.pad(
             self._input_values,
             [
@@ -287,14 +287,14 @@ class Convolution(Neuron):
         if not self._initialized:
             raise RuntimeError("Backpropogation failed: system not initialized")
 
-        input_pd = self._change_dims(input_pd, self._inner_ndim)
+        input_pd = self._change_dims(input_pd, self._inner_ndim).astype(self._dtype)
 
-        self._W_pd = np.zeros(self._W_dim)
-        backprop_pd = np.zeros(self._input_dim)
+        self._W_pd = np.zeros(self._W_dim, dtype=self._dtype)
+        backprop_pd = np.zeros(self._input_dim, dtype=self._dtype)
 
         if self._use_bias:
             self._B_pd = np.sum(input_pd, axis=0)
-        
+
         for batch_idx in range(self._batch_size):
             self._W_pd += np.concatenate(
                 [
@@ -334,7 +334,7 @@ class Convolution(Neuron):
                         )
                         for conv_layer in range(self._output_layers)
                     ], axis=0
-                )[:, 0, :, :]
+                )[0, :, :, :]
         else:
             for batch_idx in range(self._batch_size):
                 backprop_pd[batch_idx] = np.sum(
@@ -351,7 +351,7 @@ class Convolution(Neuron):
                         )
                         for conv_layer in range(self._output_layers)
                     ], axis=0
-                )[:, 0, :, :]
+                )[0, :, :, :]
         if reset_after:
             self.reset()
 
