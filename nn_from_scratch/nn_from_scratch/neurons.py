@@ -43,7 +43,7 @@ class Linear(Neuron):
 
         self._initialized = False
         self._W: Neuron.np_floating = np.random.uniform(
-            -.1, .1,
+            -1.0, 1.0,
             self._W_dim
         ).astype(self._dtype) if W is None else W
         self.reset()
@@ -184,7 +184,7 @@ class Convolution(Neuron):
 
         self._initialized = False
         self._B: Neuron.np_floating = np.random.uniform(
-            -.1, .1,
+            -1.0, 1.0,
             self._B_dim
         ).astype(self._dtype) if B is None else B
         self.reset()
@@ -197,7 +197,7 @@ class Convolution(Neuron):
 
         self._initialized = False
         self._W: Neuron.np_floating = np.random.uniform(
-            -.1, .1,
+            -1.0, 1.0,
             self._W_dim
         ).astype(self._dtype) if W is None else W
         self.reset()

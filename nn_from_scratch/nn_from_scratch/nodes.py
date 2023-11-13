@@ -205,3 +205,37 @@ class Vectorization(Node):
 
     def backward(self, input_pd: Node.np_floating) -> Node.np_floating:
         return input_pd.reshape(self._input_dim)
+
+class BoxLoss(Node):
+    r""" Implementation of SoftMax-Loss layer.
+
+    .. math::
+        \\hat{y}_{i} =-\log \left (y\frac{\exp^{x_i/x_{max}}}{\sum_{j=1}^{N} \exp^{x_j/x_{max}}} \right)
+    """
+
+    def __init__(self, n_input: Node.DIM):
+        if not isinstance(n_input, int) and len(n_input) > 2:
+            raise ValueError(
+                "loss function supports only vector inputs"
+            )
+        self._norm_softmax = NormalizedSoftMax(n_input)
+        super().__init__(n_input, 1, 2, True)
+
+    def __call__(self, x: Node.np_floating, y: Node.np_floating) -> Node.np_floating:
+        self._labels = y
+        self._x_softmax = self._norm_softmax(x)
+        self._loss_elementwise = np.array([
+            -np.log(self._labels[i].dot(self._x_softmax[i]))
+            for i in range(x.shape[0])
+        ])
+        return np.sum(self._loss_elementwise) / x.shape[0]
+
+    def jacobian(self, x: Node.np_floating) -> Node.np_floating:
+        softmax_jac: Node.np_floating = self._norm_softmax.jacobian(x)
+
+        jac: Node.np_floating = np.zeros_like(x)
+        for i in range(x.shape[0]):
+            denom = self._loss_elementwise[i]
+            jac[i] = - self._labels[i] * softmax_jac[i].diagonal() / denom
+
+        return jac
