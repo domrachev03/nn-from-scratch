@@ -1,4 +1,5 @@
 **/data
+**/dataset
 **/*.zip
 **/__pycache__
 .vscode
