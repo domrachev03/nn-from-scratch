@@ -15,7 +15,8 @@ class Linear(Neuron):
             self,
             input_dim: Neuron.DIM,
             output_dim: Neuron.DIM,
-            W: Neuron.np_floating = None
+            W: Neuron.np_floating = None,
+            W_init_range: float = 1.0
     ):
         super().__init__(input_dim, output_dim, inner_ndim=2)
 
@@ -24,6 +25,7 @@ class Linear(Neuron):
                 f"Dimension Error: second input dimension {self._input_dim[0]} not equal to second output dimension {self._output_dim[0]}"
             )
         self._dtype = np.float32
+        self._W_init_range = W_init_range
         # All input vectors would be concatenated with row of ones,
         # to transform matrix multiplication into WX + B
         self._W_dim = (self._input_dim[-1]+1, self._output_dim[-1])
@@ -43,7 +45,7 @@ class Linear(Neuron):
 
         self._initialized = False
         self._W: Neuron.np_floating = np.random.uniform(
-            -1e-3, 1e-3,
+            -self._W_init_range, self._W_init_range,
             self._W_dim
         ).astype(self._dtype) if W is None else W
         self.reset()
@@ -155,7 +157,8 @@ class Convolution(Neuron):
         padding: int = 0,
         W: Neuron.np_floating = None,
         B: Neuron.np_floating = None,
-        use_bias: bool = True
+        use_bias: bool = True,
+        W_init_range: float = 1.0
     ):
         self._use_bias = use_bias
         self._kernel_size = kernel_size
@@ -163,6 +166,7 @@ class Convolution(Neuron):
         self._padding = padding
         self._output_layers = output_layers
         self._dtype = np.float32
+        self._W_init_range = W_init_range
         output_dim = (
             self._batch_size, output_layers, input_dim[2]-kernel_size+1 + 2*padding, input_dim[3]-kernel_size+1 + 2*padding
         )
@@ -184,7 +188,7 @@ class Convolution(Neuron):
 
         self._initialized = False
         self._B: Neuron.np_floating = np.random.uniform(
-            -1e-3, 1e-3,
+            -self._W_init_range, self._W_init_range,
             self._B_dim
         ).astype(self._dtype) if B is None else B
         self.reset()
@@ -197,7 +201,7 @@ class Convolution(Neuron):
 
         self._initialized = False
         self._W: Neuron.np_floating = np.random.uniform(
-            -1e-3, 1e-3,
+            -self._W_init_range, self._W_init_range,
             self._W_dim
         ).astype(self._dtype) if W is None else W
         self.reset()
