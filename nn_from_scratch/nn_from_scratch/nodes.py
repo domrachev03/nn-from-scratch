@@ -225,4 +225,4 @@ class MSELoss(Node):
         return np.sum((x - y)**2) / self._N
 
     def jacobian(self, x: Node.np_floating) -> Node.np_floating:
-        return 2*np.abs(self._input_values - self._labels) / self._N
+        return 2*(self._input_values - self._labels) / self._N
