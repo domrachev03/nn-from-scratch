@@ -1,7 +1,7 @@
-# Neural Network implementatoin from scratch
+# Neural Network implementation from scratch
 This repository implements `nn_from_scratch` module, which is a pet-project, which implements basic Neural Networks functionality from scratch, using only `numpy` module.
 
-This repository was created for completion of *Introduction to Computer Vision* course at Innopolis Unviersity.
+This repository was created for the completion of *Introduction to Computer Vision* course at Innopolis Unviersity.
 
 ## Structure
 ``` bash
@@ -48,7 +48,7 @@ pip install -e .
 The module currently supports:
 1. Nodes
    * `SoftMax`
-   * `NormalizedSoftMax` (which is equivalient to SoftMax(x / x_max))
+   * `NormalizedSoftMax` (which is equivalent to SoftMax(x / x_max))
    * `ReLU` 
    * `SoftMaxLoss`
 2. Neurons
@@ -61,14 +61,14 @@ The module currently supports:
 ## Examples
 1. `lab4_backprop` contains tests and usage examples of `SoftMax` and `NormalizedSoftMax` nodes.
 2. `lab5_gradient` contains tests and usage examples of `ReLU` and `Linear` nodes.
-3. `lab6_neural_network` contains tests and usage examples of `GradientDescent` optimizer and `SoftMaxLoss` node and illustrates performance of the network on `MNIST` dataset.
+3. `lab6_neural_network` contains tests and usage examples of `GradientDescent` optimizer and `SoftMaxLoss` node and illustrates the performance of the network on `MNIST` dataset.
 
 ## Features
-1. Interfaces, which minimize amount of code needed for new node creation
+1. Interfaces, which minimize the amount of code needed for new node creation
 2. All nodes support vector and matrix inputs, with behaviour defined node-wise
 
 ## Future improvements ideas
 1. Reconsider `Neuron` abstract class. For now, it requires too much new code generation
 2. Implement analogue of `nn.Sequential`
 3. Make initialization of nodes batch-free
-4. Make inner dimensions more transparent and convinient to use. For now, they often require explicit treatment and sometimes event walkarounds to work properly.
+4. Make inner dimensions more transparent and convinient to use. For now, they often require explicit treatment, and sometimes event walkarounds are required to work properly.
